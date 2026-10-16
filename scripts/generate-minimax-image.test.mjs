@@ -40,6 +40,22 @@ test('builds a text-to-image request from CLI options',()=>{
   });
 });
 
+test('builds a subject-reference image-to-image request',()=>{
+  const options=parseArguments([
+    '--prompt','Redesign this screenshot as a polished presentation slide',
+    '--output','images/redesign.png',
+    '--subject-reference','source.png',
+    '--subject-reference-type','object',
+  ]);
+  assert.deepEqual(buildImageRequest({...options,subjectReference:['data:image/png;base64,AAAA']}),{
+    model:'image-01',
+    prompt:'Redesign this screenshot as a polished presentation slide',
+    response_format:'url',
+    n:1,
+    subject_reference:[{type:'object',image:['data:image/png;base64,AAAA']}],
+  });
+});
+
 test('parses image URLs and response metadata',()=>{
   assert.deepEqual(parseApiResponse({
     data:{image_urls:['https://images.example/one.png']},

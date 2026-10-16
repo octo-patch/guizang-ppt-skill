@@ -30,7 +30,7 @@ node "<SKILL_ROOT>/scripts/generate-minimax-image.mjs" \
 
 Use `--region cn_zh` for the China endpoint. Use `--model image-01-live` when live image generation is required.
 
-The adapter sends `model`, `prompt`, `response_format`, and `n`. It also supports `aspect_ratio`, `width`, `height`, `seed`, and `prompt_optimizer`.
+The adapter sends `model`, `prompt`, `response_format`, and `n`. It also supports `subject_reference` for reference-image generation, plus `aspect_ratio`, `width`, `height`, `seed`, and `prompt_optimizer`. Pass `--subject-reference` once per source image (local files are encoded as data URIs); use `--subject-reference-type object` for screenshot or layout references.
 
 ## Response Handling
 

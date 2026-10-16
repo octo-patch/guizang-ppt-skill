@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {mkdir, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {dirname, join, parse, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -34,6 +34,8 @@ function usage(){
     '  --seed <integer>                Deterministic seed',
     '  --n <count>                     Number of images (default: 1)',
     '  --prompt-optimizer <true|false> Enable or disable prompt optimization',
+    '  --subject-reference <path-or-url>  Source image (repeatable for reference-image generation)',
+    '  --subject-reference-type <type>   Reference type: character or object (default: character)',
     '  --help                          Show this help',
   ].join('\n');
 }
@@ -72,6 +74,8 @@ export function parseArguments(argv){
     model:DEFAULT_MODEL,
     responseFormat:'url',
     n:1,
+    subjectReferences:[],
+    subjectReferenceType:'character',
   };
 
   for(let index=0;index<argv.length;index++){
@@ -90,6 +94,8 @@ export function parseArguments(argv){
     else if(flag==='--seed')options.seed=parseInteger(value,flag);
     else if(flag==='--n')options.n=parseInteger(value,flag,{min:1});
     else if(flag==='--prompt-optimizer')options.promptOptimizer=parseBoolean(value,flag);
+    else if(flag==='--subject-reference')options.subjectReferences.push(value);
+    else if(flag==='--subject-reference-type')options.subjectReferenceType=value;
     else throw new Error(`Unknown option "${flag}".`);
   }
 
@@ -98,7 +104,8 @@ export function parseArguments(argv){
   if(!options.output?.trim())throw new Error('--output is required.');
   endpointForRegion(options.region);
   if(!MODELS.has(options.model))throw new Error(`Unsupported model "${options.model}".`);
-  if(!OUTPUT_FORMATS.has(options.responseFormat))throw new Error(`Unsupported response format "${options.responseFormat}".`);
+  if(!OUTPUT_FORMATS.has(options.responseFormat))throw new Error(`Unsupported response format \"${options.responseFormat}\".`);
+  if(!['character','object'].includes(options.subjectReferenceType))throw new Error('Unsupported subject reference type.');
   return options;
 }
 
@@ -114,6 +121,7 @@ export function buildImageRequest(options){
   if(options.height!==undefined)body.height=options.height;
   if(options.seed!==undefined)body.seed=options.seed;
   if(options.promptOptimizer!==undefined)body.prompt_optimizer=options.promptOptimizer;
+  if(options.subjectReference?.length)body.subject_reference=[{type:options.subjectReferenceType||'character',image:options.subjectReference}];
   return body;
 }
 
@@ -185,18 +193,32 @@ export async function saveImageResults(entries,output,{fetchImpl=globalThis.fetc
   return files;
 }
 
+async function prepareSubjectReferences(references){
+  const prepared=[];
+  for(const reference of references||[]){
+    if(/^https?:\/\//i.test(reference)||/^data:image\//i.test(reference)){prepared.push(reference);continue;}
+    const bytes=await readFile(reference);
+    const extension=reference.toLowerCase().split('.').pop();
+    const mime={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp'}[extension]||'application/octet-stream';
+    prepared.push(`data:${mime};base64,${bytes.toString('base64')}`);
+  }
+  return prepared;
+}
+
 export async function generateImage(options,{apiKey,fetchImpl=globalThis.fetch}={}){
   if(!apiKey?.trim())throw new Error('MINIMAX_API_KEY is required.');
   if(typeof fetchImpl!=='function')throw new Error('Node.js 18 or newer is required for fetch support.');
 
   const endpoint=endpointForRegion(options.region);
+  const subjectReference=await prepareSubjectReferences(options.subjectReferences);
+  const requestOptions={...options,subjectReference};
   const response=await fetchImpl(endpoint,{
     method:REQUEST_METHOD,
     headers:{
       Authorization:`${AUTHORIZATION_SCHEME} ${apiKey}`,
       'Content-Type':'application/json',
     },
-    body:JSON.stringify(buildImageRequest(options)),
+    body:JSON.stringify(buildImageRequest(requestOptions)),
   });
   const responseText=await response.text();
   let payload;
